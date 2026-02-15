@@ -36,7 +36,7 @@ local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/v
 -- Variables
 local PickUpRemote = nil 
 local AutoPickUpToggle = false
-local Range = 35
+local Range = 25
 
 -- Player Chams Vars
 local PLAYERCHAMS = false
