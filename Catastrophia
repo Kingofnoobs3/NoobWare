@@ -120,7 +120,7 @@ local OreList = {
     SulfurOre = { Enabled = false, Color = Color3.fromRGB(255, 255, 0) },
     StoneOre = { Enabled = false, Color = Color3.fromRGB(160, 160, 160) },
     IronOre = { Enabled = false, Color = Color3.fromRGB(255, 100, 0) },
-    Barrel = { Enabled = false, Color = Color3.fromRGB(139, 69, 19) }
+    Barrel = { Enabled = false, Color = Color3.fromRGB(239, 69, 19) }
 }
 local AnimalList = {
     Bear = { Color = Color3.fromRGB(101, 67, 33), Id = "5051893086" },
@@ -134,7 +134,7 @@ local AnimalList = {
 
 
 -- UI Setup
-local Window = Library:CreateWindow({ Title = "NoobWare", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "NoobWare Made by: Noobs#2799", Center = true, AutoShow = true })
 
 -- FIXED TABS TABLE
 local Tabs = { 
@@ -611,7 +611,7 @@ AdvancedGroup:AddSlider('ManualY', {
 OreGroup:AddToggle("MasterOre", { Text = "Master Enable Ores", Default = false, Callback = function(v) OreConfig.Ores.Enabled = v end })
 local OreDep = OreGroup:AddDependencyBox()
 
-OreDep:AddSlider("OreDist", { Text = "Max Distance", Default = 1000, Min = 100, Max = 5000, Rounding = 0, Callback = function(v) OreConfig.Ores.Distance = v end })
+OreDep:AddSlider("OreDist", { Text = "Max Distance", Default = 1000, Min = 10, Max = 3000, Rounding = 0, Callback = function(v) OreConfig.Ores.Distance = v end })
 OreDep:AddSlider("OreSize", { Text = "Ore Text Size", Default = 14, Min = 8, Max = 24, Rounding = 0, Callback = function(v) OreConfig.Ores.TextSize = v end })
 OreDep:AddDivider()
 
