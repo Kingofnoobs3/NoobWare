@@ -922,19 +922,6 @@ task.spawn(function()
         task.wait(0.418)
     end
 end)
-
-task.spawn(function()
-    while true do
-        if AutoPickUpToggle and PickUpRemote then
-            local itemToPick = getTargetItem()
-            if itemToPick then
-                PickUpRemote:FireServer(itemToPick)
-            end
-        end
-        task.wait(0.418)
-    end
-end)
-
 -- [[ LOOT ESP LOGIC ]] --
 local function attachVisualTag(obj)
     local activeTag = obj:FindFirstChild("LootLabel")
