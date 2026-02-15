@@ -75,8 +75,8 @@ _G.CircleSides = 22
 _G.CircleTransparency = 1
 
 -- inv viewer 
-_G.InvPosX = 1880
-_G.InvPosY = 830
+_G.InvPosX = 1480
+_G.InvPosY = 630
 _G.UIScale = 1.5
 _G.ScannerEnabled = false
 
@@ -111,6 +111,25 @@ getgenv().Settings = {
     Revolver_ProjectileSpeed = 600,
     Shotgun_ProjectileSpeed = 450,
 }
+local OreConfig = {
+    Ores = { Enabled = false, Distance = 1000, TextSize = 14 },
+    Animals = { Enabled = false, Distance = 1500, TextSize = 14 }
+}
+
+local OreList = {
+    SulfurOre = { Enabled = false, Color = Color3.fromRGB(255, 255, 0) },
+    StoneOre = { Enabled = false, Color = Color3.fromRGB(160, 160, 160) },
+    IronOre = { Enabled = false, Color = Color3.fromRGB(255, 100, 0) },
+    Barrel = { Enabled = false, Color = Color3.fromRGB(139, 69, 19) }
+}
+local AnimalList = {
+    Bear = { Color = Color3.fromRGB(101, 67, 33), Id = "5051893086" },
+    Sheep = { Color = Color3.fromRGB(255, 255, 255), Id = "4567477687" },
+    Pig = { Color = Color3.fromRGB(255, 105, 180), Id = "5051901683" },
+    Wolf = { Color = Color3.fromRGB(169, 169, 169), Id = "4766277560" },
+    Alligator = { Color = Color3.fromRGB(34, 139, 34), Id = "6779186964" }
+}
+
 
 
 
@@ -132,6 +151,9 @@ local AdvancedGroup = Tabs.Aimbot:AddLeftGroupbox('Smoothing & Fine Tuning')
 -- [[ MAIN TAB ]]
 local LeftGroupBox = Tabs.Main:AddLeftGroupbox("Features")
 local RightGroupBox = Tabs.Main:AddRightGroupbox("Visuals")
+local OreGroup = Tabs.Main:AddRightGroupbox('Ore ESP')
+local AnimalGroup = Tabs.Main:AddRightGroupbox('Animal ESP')
+
 
 -- 1. FEATURES
 LeftGroupBox:AddToggle("AutoPick", { Text = "Auto Pick Up", Default = false, Tooltip = 'Pick up item immediately Check F9 for remote',  Callback = function(V) AutoPickUpToggle = V end })
@@ -241,32 +263,38 @@ LootEspDependeancy:SetupDependencies({
 RightGroupBox:AddToggle("HealthESP", { Text = "Health Bar ESP", Default = false, Callback = function(V) _G.HealthBarESP = V end })
 
 -- 4. VISUALS - PLAYERS
-RightGroupBox:AddToggle("Player Chams", { 
+RightGroupBox:AddToggle("PlayerChams", { -- Removed space to match the Toggle index
     Text = "Enable Player Chams", 
     Default = false, 
     Callback = function(Value) 
-        PLAYERCHAMS= Value 
+        PLAYERCHAMS = Value 
         if not Value then
-            local playersFolder = Workspace:FindFirstChild("Players")
-            if playersFolder then
-                for _, obj in pairs(playersFolder:GetDescendants()) do
-                    if obj.Name == "cham" then obj:Destroy() end
+            -- Players are usually in game.Players, but their characters are in Workspace
+            for _, player in pairs(game:GetService("Players"):GetPlayers()) do
+                local char = player.Character
+                if char and char:FindFirstChild("cham") then
+                    char.cham:Destroy()
                 end
             end
         end
     end 
 })
 
-RightGroupBox:AddLabel("Player Color"):AddColorPicker("ColorPicker", { 
+local PLChams = RightGroupBox:AddDependencyBox()
+
+PLChams:AddLabel("Player Color"):AddColorPicker("PlayerColorPicker", { -- Unique ID
     Default = Color3.fromRGB(155, 1, 1), 
-    Callback = function(Value) ChamColor = Value end -- Updated to _G
+    Callback = function(Value) ChamColor = Value end 
 })
 
-RightGroupBox:AddSlider("TransSlider", { 
+PLChams:AddSlider("PlayerTransSlider", { -- Unique ID
     Text = "Player Trans", Default = 0.5, Min = 0, Max = 1, Rounding = 2, 
-    Callback = function(Value) ChamTransparency = Value end -- Updated to _G
+    Callback = function(Value) ChamTransparency = Value end 
 })
 
+PLChams:SetupDependencies({
+    { Toggles.PlayerChams, true } -- Matches the ID in AddToggle exactly
+})
 
 
 -- 5 Player item holder
@@ -276,12 +304,14 @@ RightGroupBox:AddToggle("EspEnabled", {
     Callback = function(Value) ESP_Config.Enabled = Value end
 })
 
-RightGroupBox:AddLabel("ESP Color"):AddColorPicker("EspColor", {
+local NameESPdep = RightGroupBox:AddDependencyBox()
+
+NameESPdep:AddLabel("ESP Color"):AddColorPicker("EspColor", {
     Default = Color3.fromRGB(255, 255, 255),
     Callback = function(Value) ESP_Config.Color = Value end
 })
 
-RightGroupBox:AddDropdown("EspFont", {
+NameESPdep:AddDropdown("EspFont", {
     Values = { "UI", "System", "Plex", "Monospace" },
     Default = 3, 
     Text = "ESP Font",
@@ -291,7 +321,7 @@ RightGroupBox:AddDropdown("EspFont", {
     end
 })
 
-RightGroupBox:AddSlider("EspSize", {
+NameESPdep:AddSlider("EspSize", {
     Text = "ESP Text Size",
     Default = 14,
     Min = 8,
@@ -302,13 +332,17 @@ RightGroupBox:AddSlider("EspSize", {
     end
 })
 
-RightGroupBox:AddSlider("EspTransparency", {
+NameESPdep:AddSlider("EspTransparency", {
     Text = "ESP Transparency",
     Default = 1,
     Min = 0,
     Max = 1,
     Rounding = 1,
     Callback = function(Value) ESP_Config.Transparency = Value end
+})
+
+NameESPdep:SetupDependencies({
+    { Toggles.EspEnabled, true } -- Matches the ID in AddToggle exactly
 })
 
 -- 6. VISUALS - SOLDIERS
@@ -327,16 +361,21 @@ RightGroupBox:AddToggle("ChamsToggle", {
         end
     end 
 })
-RightGroupBox:AddLabel("Soldier Color"):AddColorPicker("ColorPicker", { 
+
+local SOLDIERSESPdep = RightGroupBox:AddDependencyBox()
+
+SOLDIERSESPdep:AddLabel("Soldier Color"):AddColorPicker("ColorPicker", { 
     Default = Color3.fromRGB(1, 188, 188), 
     Callback = function(Value) SChamColor = Value end 
 })
-RightGroupBox:AddSlider("TransSlider", { 
+SOLDIERSESPdep:AddSlider("TransSlider", { 
     Text = "Soldier Trans", Default = 0.5, Min = 0, Max = 1, Rounding = 2, 
     Callback = function(Value) SChamTransparency = Value end 
 })
 
-
+SOLDIERSESPdep:SetupDependencies({
+    { Toggles.ChamsToggle, true } -- Matches the ID in AddToggle exactly
+})
 ---7 FOV
 
 
@@ -355,7 +394,7 @@ local FovSettingsBox = LeftGroupBox:AddDependencyBox()
 
 FovSettingsBox:AddToggle('FovVisible', {
     Text = 'Show FOV Circle',
-    Default = false, -- False on startup
+    Default = true, -- False on startup
     Callback = function(Value)
         _G.CircleVisible = Value
 
@@ -413,7 +452,7 @@ FovSettingsBox:SetupDependencies({
 LeftGroupBox:AddToggle('InvScannerToggle', {
     Text = 'Inventory Viewer',
     Default = _G.ScannerEnabled,
-    Tooltip = 'Requires a player to be near your cursor',
+    Tooltip = 'Requires FOV Circle',
     Callback = function(Value)
         _G.ScannerEnabled = Value
     end
@@ -442,14 +481,13 @@ MainAimbotGroup:AddToggle('AimbotMaster', {
     Tooltip = 'Enables the main aimbot logic',
     Callback = function(Value) getgenv().Settings.aimbot = Value end
 })
-
-MainAimbotGroup:AddToggle('SoldierAimbot', {
+local MaxAimDisDep = MainAimbotGroup:AddDependencyBox()
+MaxAimDisDep:AddToggle('SoldierAimbot', {
     Text = 'Target Soldiers/NPCs',
     Default = false,
     Callback = function(Value) getgenv().Settings.SoldierAimbot = Value end
 })
-
-MainAimbotGroup:AddSlider('MaxDistance', {
+MaxAimDisDep:AddSlider('MaxDistance', {
     Text = 'Max Aim Distance',
     Default = 250,
     Min = 0,
@@ -458,9 +496,12 @@ MainAimbotGroup:AddSlider('MaxDistance', {
     Compact = false,
     Callback = function(Value) getgenv().Settings.MaxDistance = Value end
 })
+MaxAimDisDep:SetupDependencies({
+    { Toggles.AimbotMaster, true }
+})
 PredictionGroup:AddDivider()
 
-MainAimbotGroup:AddToggle('ShowTracer', {
+MaxAimDisDep:AddToggle('ShowTracer', {
     Text = 'Target Visual Line',
     Default = false,
     Callback = function(Value) 
@@ -469,7 +510,7 @@ MainAimbotGroup:AddToggle('ShowTracer', {
 })
 
 -- 2. Create the Dependency Box (Renamed to TracerDep to avoid conflicts)
-local TracerDep = MainAimbotGroup:AddDependencyBox()
+local TracerDep = MaxAimDisDep:AddDependencyBox()
 
 -- 3. Add the Color Picker INSIDE the dependency box
 TracerDep:AddLabel('Tracer Color'):AddColorPicker('TracerColor', {
@@ -481,7 +522,7 @@ TracerDep:AddLabel('Tracer Color'):AddColorPicker('TracerColor', {
 
 -- 4. Link the box to the Toggle
 TracerDep:SetupDependencies({
-    { Toggles.ShowTracer, false }
+    { Toggles.ShowTracer, true }
 })
 --- [[ PROJECTILE & PREDICTION ]] ---
 
@@ -489,30 +530,18 @@ TracerDep:SetupDependencies({
 --- [[ SMOOTHING & FINE TUNING ]] ---
 
 PredictionGroup:AddDropdown('PredType', {
-    Values = { 'Simple', 'Quadratic' },
+    Values = { 'Quadratic', 'Simple' },
     Default = 1, 
     Multi = false,
     Text = 'Prediction Method',
     Callback = function(Value) getgenv().Settings.BowPredictionType = Value end
 })
 
-PredictionGroup:AddSlider('BowSpeed', {
-    Text = 'Bow Projectile Speed',
-    Default = 100, Min = 80, Max = 250, Rounding = 0,
-    Callback = function(Value) getgenv().Settings.BowSpeed = Value end
-})
-
-PredictionGroup:AddSlider('CrossbowSpeed', {
-    Text = 'Crossbow Projectile Speed',
-    Default = 130, Min = 80, Max = 400, Rounding = 0,
-    Callback = function(Value) getgenv().Settings.CrossbowSpeed = Value end
-})
-
 PredictionGroup:AddDivider()
 
 PredictionGroup:AddToggle('PingComp', {
     Text = 'Ping Compensation',
-    Default = true,
+    Default = false,
     Callback = function(Value) getgenv().Settings.PingCompensation = Value end
 })
 
@@ -577,6 +606,44 @@ AdvancedGroup:AddSlider('ManualY', {
     Rounding = 2, -- Fixed: 1 decimal place
     Callback = function(Value) getgenv().Settings.ManualYOffset = Value end
 })
+
+-- [[ ORE SECTION ]]
+OreGroup:AddToggle("MasterOre", { Text = "Master Enable Ores", Default = false, Callback = function(v) OreConfig.Ores.Enabled = v end })
+local OreDep = OreGroup:AddDependencyBox()
+
+OreDep:AddSlider("OreDist", { Text = "Max Distance", Default = 1000, Min = 100, Max = 5000, Rounding = 0, Callback = function(v) OreConfig.Ores.Distance = v end })
+OreDep:AddSlider("OreSize", { Text = "Ore Text Size", Default = 14, Min = 8, Max = 24, Rounding = 0, Callback = function(v) OreConfig.Ores.TextSize = v end })
+OreDep:AddDivider()
+
+for name, _ in pairs(OreList) do
+    OreDep:AddToggle(name.."Tog", { 
+        Text = "Show " .. name, 
+        Default = false, 
+        Callback = function(v) OreList[name].Enabled = v end 
+    }):AddColorPicker(name.."Col", { 
+        Default = OreList[name].Color, 
+        Callback = function(v) OreList[name].Color = v end 
+    })
+end
+OreDep:SetupDependencies({{ Toggles.MasterOre, true }})
+
+
+-- [[ ANIMAL SECTION ]]
+AnimalGroup:AddToggle("MasterAni", { Text = "Master Enable Animals", Default = false, Callback = function(v) OreConfig.Animals.Enabled = v end })
+local AnimalDep = AnimalGroup:AddDependencyBox()
+
+AnimalDep:AddSlider("AniDist", { Text = "Max Distance", Default = 1500, Min = 100, Max = 5000, Rounding = 0, Callback = function(v) OreConfig.Animals.Distance = v end })
+AnimalDep:AddSlider("AniSize", { Text = "Animal Text Size", Default = 14, Min = 8, Max = 24, Rounding = 0, Callback = function(v) OreConfig.Animals.TextSize = v end })
+AnimalDep:AddDivider()
+
+for name, data in pairs(AnimalList) do
+    AnimalDep:AddLabel(name):AddColorPicker(name.."Col", { 
+        Default = data.Color, 
+        Callback = function(v) AnimalList[name].Color = v end 
+    })
+end
+AnimalDep:SetupDependencies({{ Toggles.MasterAni, true }})
+
 
 Library.ToggleKeybind = Options.MenuKeybind -- Syncs the keybind
 
@@ -1586,3 +1653,93 @@ RunService.RenderStepped:Connect(function()
         if TargetTracer then TargetTracer.Visible = false end
     end
 end)
+
+-- Animal and Ore Esp
+
+local DrawingPool = {}
+local function GetDrawing(index)
+    if not DrawingPool[index] then
+        local t = Drawing.new("Text")
+        t.Visible = false
+        t.Center = true
+        t.Outline = true
+        t.Font = 2
+        DrawingPool[index] = t
+    end
+    return DrawingPool[index]
+end
+
+local function GetAnimalName(model)
+    local mesh = model:FindFirstChild("AnimalMesh", true)
+    if mesh and (mesh:IsA("MeshPart") or mesh:IsA("SpecialMesh")) then
+        local id = tostring(mesh.MeshId)
+        for name, data in pairs(AnimalList) do
+            if id:find(data.Id) then return name end
+        end
+    end
+    return nil
+end
+
+RunService.RenderStepped:Connect(function()
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local drawIndex = 1
+
+    if root then
+        -- Handle Ores
+        if OreConfig.Ores.Enabled then
+            local suv = Workspace:FindFirstChild("Suroviny")
+            if suv then
+                for _, item in pairs(suv:GetChildren()) do
+                    local oreData = OreList[item.Name]
+                    if oreData and oreData.Enabled then
+                        local dist = (root.Position - item.Position).Magnitude
+                        if dist < OreConfig.Ores.Distance then
+                            local screenPos, onScreen = Camera:WorldToViewportPoint(item.Position)
+                            if onScreen then
+                                local d = GetDrawing(drawIndex)
+                                d.Visible = true
+                                d.Position = Vector2.new(screenPos.X, screenPos.Y)
+                                d.Text = string.format("%s\n[%dm]", item.Name, math.floor(dist))
+                                d.Color = oreData.Color
+                                d.Size = OreConfig.Ores.TextSize
+                                drawIndex = drawIndex + 1
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Handle Animals
+        if OreConfig.Animals.Enabled then
+            local aniFolder = Workspace:FindFirstChild("Animals")
+            if aniFolder then
+                for _, animal in pairs(aniFolder:GetChildren()) do
+                    local name = GetAnimalName(animal)
+                    local aRoot = animal:FindFirstChild("HumanoidRootPart") or animal.PrimaryPart
+                    if name and aRoot then
+                        local dist = (root.Position - aRoot.Position).Magnitude
+                        if dist < OreConfig.Animals.Distance then
+                            local screenPos, onScreen = Camera:WorldToViewportPoint(aRoot.Position)
+                            if onScreen then
+                                local d = GetDrawing(drawIndex)
+                                d.Visible = true
+                                d.Position = Vector2.new(screenPos.X, screenPos.Y)
+                                d.Text = string.format("%s\n[%dm]", name, math.floor(dist))
+                                d.Color = AnimalList[name].Color
+                                d.Size = OreConfig.Animals.TextSize
+                                drawIndex = drawIndex + 1
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Hide any unused drawings in the pool to prevent ghosting/flicker
+    for i = drawIndex, #DrawingPool do
+        DrawingPool[i].Visible = false
+    end
+end)
+
