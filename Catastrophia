@@ -1,3 +1,20 @@
+local anti_name = "NovyHraac"
+
+-- Anti-Cheat Bypass
+for i,v in pairs(getgc(true)) do 
+    if typeof(v) == "function" and islclosure(v) then 
+        local info = getfenv(v)
+        if info.script and info.script.Name == anti_name then 
+            local constants = getconstants(v)
+            if constants[12] and constants[11] then 
+                if constants[11] == "Backpack" and constants[12] == "FireServer" then 
+                    hookfunction(v, function() return end)
+                end 
+            end 
+        end 
+    end 
+end
+
 -- Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,7 +36,7 @@ local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/v
 -- Variables
 local PickUpRemote = nil 
 local AutoPickUpToggle = false
-local Range = 30
+local Range = 35
 
 -- Player Chams Vars
 local PLAYERCHAMS = false
@@ -88,22 +105,13 @@ getgenv().Settings = {
     -- [[ PROJECTILE SPEEDS ]]
     BowSpeed = 100,
     CrossbowSpeed = 130,
+
+    -- [[ UNUSED PLACEHOLDERS (Future Proofing) ]]
+    AR_ProjectileSpeed = 800,
+    Revolver_ProjectileSpeed = 600,
+    Shotgun_ProjectileSpeed = 450,
 }
 
-local anti_name = "NovyHraac"
-for i,v in pairs(getgc(true)) do 
-    if typeof(v) == "function" and islclosure(v) then 
-        local info = getfenv(v)
-        if info.script and info.script.Name == anti_name then 
-            local constants = getconstants(v)
-            if constants[12] and constants[11] then 
-                if constants[11] == "Backpack" and constants[12] == "FireServer" then 
-                    hookfunction(v, function() return end)
-                end 
-            end 
-        end 
-    end 
-end
 
 
 -- UI Setup
@@ -488,6 +496,17 @@ PredictionGroup:AddDropdown('PredType', {
     Callback = function(Value) getgenv().Settings.BowPredictionType = Value end
 })
 
+PredictionGroup:AddSlider('BowSpeed', {
+    Text = 'Bow Projectile Speed',
+    Default = 100, Min = 80, Max = 250, Rounding = 0,
+    Callback = function(Value) getgenv().Settings.BowSpeed = Value end
+})
+
+PredictionGroup:AddSlider('CrossbowSpeed', {
+    Text = 'Crossbow Projectile Speed',
+    Default = 130, Min = 80, Max = 400, Rounding = 0,
+    Callback = function(Value) getgenv().Settings.CrossbowSpeed = Value end
+})
 
 PredictionGroup:AddDivider()
 
@@ -512,7 +531,7 @@ PingDep:SetupDependencies({{ Toggles.PingComp, true }})
 
 AdvancedGroup:AddToggle('SmoothToggle', {
     Text = 'Enable Smoothing',
-    Default = false,
+    Default = true,
     Callback = function(Value) getgenv().Settings.SmoothingEnabled = Value end
 })
 
@@ -824,6 +843,18 @@ local function getTargetItem()
     end
     return closestItem
 end
+
+task.spawn(function()
+    while true do
+        if AutoPickUpToggle and PickUpRemote then
+            local itemToPick = getTargetItem()
+            if itemToPick then
+                PickUpRemote:FireServer(itemToPick)
+            end
+        end
+        task.wait(0.418)
+    end
+end)
 
 task.spawn(function()
     while true do
@@ -1332,37 +1363,39 @@ end
 
 -- [[ ENHANCED PREDICTION SYSTEM ]]
 local function AutoPrediction(targetRoot, tool)
-    -- [[ FIX: Define Services & Player Locally to prevent nil errors ]]
+    -- [[ 1. SETUP & SAFETY ]]
     local Players = game:GetService("Players")
     local Workspace = game:GetService("Workspace")
     local Stats = game:GetService("Stats")
     local lp = Players.LocalPlayer
 
-    -- [[ SAFETY CHECK: Ensure Player and Character exist ]]
     if not lp or not lp.Character then return Vector3.zero end
-
     local myChar = lp.Character
     local myRoot = myChar:FindFirstChild("HumanoidRootPart")
     
-    -- Safety check for target
     if not targetRoot or not targetRoot.Parent then return Vector3.zero end
     local hum = targetRoot.Parent:FindFirstChild("Humanoid")
-    
     if not (myRoot and hum) then return Vector3.zero end
 
+    -- [[ 2. DATA CALCULATION ]]
+    local Settings = getgenv().Settings -- Access global settings safely
     local vel = targetRoot.AssemblyLinearVelocity
     local velsupress = Vector3.new(vel.X, 0, vel.Z)
-    
-    -- [[ FIX: Use Workspace service instead of undefined 'ws' ]]
     local gravity = Vector3.new(0, math.abs(Workspace.Gravity), 0)
     
-    -- [[ FIX: Safe Ping Calculation ]]
-    local rawPing = 0.1 -- Default fallback
+    -- Safe Ping Calculation
+    local rawPing = 0.05
     pcall(function()
         rawPing = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
     end)
     
-    local pingLead = getgenv().Settings.PingCompensation and (vel * (rawPing * getgenv().Settings.PingCustomWeight)) or Vector3.zero
+    -- Safe Ping Lead
+    local pingWeight = Settings.PingCustomWeight or 1 -- Fallback to 1 if nil
+    local pingLead = Settings.PingCompensation and (vel * (rawPing * pingWeight)) or Vector3.zero
+
+    -- Manual Y Setup (Calculated internally to avoid 'nil' errors)
+    local manualYOffset = Settings.ManualYOffset or 0
+    local manualYVector = Vector3.new(0, manualYOffset, 0)
 
     -- Factors
     local walkSpeed = hum.WalkSpeed or 16
@@ -1370,43 +1403,35 @@ local function AutoPrediction(targetRoot, tool)
     local revFactor = math.max(math.abs(-0.11 * walkSpeed + 1), 1.5)
     local sgFactor = math.max(math.abs(-0.11 * walkSpeed * rawPing), 1.5)
 
-    -- [[ 1. GUN LOGIC ]]
-    -- Removed Y prediction logic; now uses purely horizontal lead + your manual offset
+    -- [[ 3. GUN LOGIC ]]
+    -- We add manualYVector (Vector3) to the lead (Vector3). 
     if tool.Name == "AssaultRifle" then
         local lead = (velsupress / ARFactor) + Vector3.new(pingLead.X, 0, pingLead.Z)
-        return lead + manualY
+        return lead + manualYVector
     elseif tool.Name == "Revolver" then
         local lead = (velsupress / revFactor) + Vector3.new(pingLead.X, 0, pingLead.Z)
-        return lead + manualY
+        return lead + manualYVector
     elseif tool.Name == "Shotgun" then
         local lead = (velsupress / sgFactor) + Vector3.new(pingLead.X, 0, pingLead.Z)
-        return lead + manualY
+        return lead + manualYVector
     elseif tool.Name == "Rock" then
-        -- Rock retains gravity/ping logic as it's a physics object, but adds manual offset
-        return (vel * (rawPing / 2)) + (gravity * ((rawPing / 2)^2 / 2)) + manualY
+        -- Rock physics logic
+        return (vel * (rawPing / 2)) + (gravity * ((rawPing / 2)^2 / 2)) + manualYVector
     end
-    -- [[ 2. BOW & CROSSBOW HYBRID LOGIC ]]
+
+    -- [[ 4. BOW & CROSSBOW LOGIC ]]
     if tool.Name == "Bow" or tool.Name == "Crossbow" then
         local xzLead = Vector3.zero
         local distanceForY = 0
-        local projSpeed = (tool.Name == "Bow") and getgenv().Settings.BowSpeed or getgenv().Settings.CrossbowSpeed
+        local projSpeed = (tool.Name == "Bow") and Settings.BowSpeed or Settings.CrossbowSpeed
 
-        if getgenv().Settings.BowPredictionType == "Quadratic" then
-            -- METHOD 1: Math Intercept
-            -- Ensure solveInterception is defined globally or passed here
-            if solveInterception then
-                local interceptPos, t = solveInterception(myRoot.Position, projSpeed, targetRoot.Position, vel)
-                interceptPos = interceptPos or (targetRoot.Position + pingLead)
-                xzLead = (interceptPos - targetRoot.Position) + pingLead
-                distanceForY = (interceptPos - myRoot.Position).Magnitude
-            else
-                 -- Fallback if solver is missing
-                 xzLead = (vel / 2) * getgenv().Settings.SimpleXScaler + pingLead
-                 distanceForY = (targetRoot.Position - myRoot.Position).Magnitude
-            end
+        if Settings.BowPredictionType == "Quadratic" and solveInterception then
+            local interceptPos, t = solveInterception(myRoot.Position, projSpeed, targetRoot.Position, vel)
+            interceptPos = interceptPos or (targetRoot.Position + pingLead)
+            xzLead = (interceptPos - targetRoot.Position) + pingLead
+            distanceForY = (interceptPos - myRoot.Position).Magnitude
         else
-            -- METHOD 2: Simple Division Lead
-            xzLead = (vel / 2) * getgenv().Settings.SimpleXScaler + pingLead
+            xzLead = (vel / 2) * Settings.SimpleXScaler + pingLead
             distanceForY = (targetRoot.Position - myRoot.Position).Magnitude
         end
 
@@ -1421,14 +1446,13 @@ local function AutoPrediction(targetRoot, tool)
 
         return Vector3.new(
             xzLead.X, 
-            (yOffset * getgenv().Settings.GlobalYScaler) + getgenv().Settings.ManualYOffset, 
+            (yOffset * Settings.GlobalYScaler) + manualYOffset, 
             xzLead.Z
         )
     end
+
     return Vector3.zero
 end
--- [[ TARGET ACQUISITION ]]
--- [[ CONSOLIDATED TARGET ACQUISITION ]]
 -- This replaces both GetClosestToMouse and GetClosestTarget
 local function GetAimbotTarget()
     local MouseLocation = UserInputService:GetMouseLocation()
