@@ -24,9 +24,9 @@ local Camera = workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local player = Players.LocalPlayer
-local EventsFolder = ReplicatedStorage:WaitForChild("Events")
 local Stats = game:GetService("Stats")
 local lp = game:GetService("Players").LocalPlayer
+local EventsFolder = game:GetService("ReplicatedStorage"):FindFirstChild("Events")
 
 -- UI Library
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/Library.lua"))()
@@ -37,13 +37,10 @@ local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/v
 local PickUpRemote = nil 
 local AutoPickUpToggle = false
 local Range = 25
-local PickupSpeed = 0.418
+local PickupSpeed = 0.42
 local PickUpUseHoldKeyMode = false        -- Set to true to only pickup while holding the key
 local KeyBind = Enum.KeyCode.E      -- The key to hold
-local IgnoreTrashItems = true       -- If true, will NOT pick up Rocks or Torches
 local MaxToolLimit = 20             -- Stops picking up if Backpack has this many items
-local PriorityPickupToggle = true   -- If true, prioritizes the lists below before closest item
-
 -- Player Chams Vars
 local PLAYERCHAMS = false
 local ChamColor = Color3.fromRGB(255, 0, 0) -- Red
@@ -193,20 +190,12 @@ AutoPickDepp:AddSlider('MaxTools', {
     Callback = function(V) MaxToolLimit = V end
 })
 
--- Sub-Toggles
-AutoPickDepp:AddToggle("IgnoreTrash", { 
-    Text = "Ignore Rocks/Torches", 
+-- Change "IgnoreTrashItems" to "HealthCheckToggle"
+AutoPickDepp:AddToggle("HealthCheckToggle", { 
+    Text = "Death Fixes Bug", 
     Default = true, 
-    Callback = function(V) IgnoreTrashItems = V end 
+    Callback = function(V) HealthCheckToggle = V end -- Fixed variable name
 })
-
-AutoPickDepp:AddToggle("PriorityMode", { 
-    Text = "Priority Pickup", 
-    Default = true, 
-    Callback = function(V) PriorityPickupToggle = V end 
-})
-
-
 -- Key Hold Toggle + Key Picker
 AutoPickDepp:AddToggle("HoldKeyMode", { 
     Text = "Use Hold Key", 
@@ -903,7 +892,18 @@ end
 Players.PlayerAdded:Connect(applyESP)
 
 
--- [[ REMOTE SPY / AUTO PICK ]] --
+local isKeyDown = false
+
+-- Track key presses for the Hold E mode
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == KeyBind then
+        isKeyDown = true
+    end
+end)
+
+-- Single Hook for Remote Spy
+
 
 local Blacklist = {
     "test", "CloseChest", "RemoveBubble", "SetPoradi",
@@ -939,118 +939,115 @@ local function getCharacterRoot()
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
-local HighPriorityTable = {
-    ["AssaultRifle"] = true, ["Revolver"] = true, ["Crossbow"] = true, ["Shotgun"] = true,
-    ["CrateKey"] = true, ["Bolt"] = true, ["RevolverAmmo"] = true, ["Rifleammo"] = true,
-    ["Shotgunammo"] = true, ["Dynamite"] = true, ["Gernade"] = true, ["Medkit"] = true,
-    ["KevlarShirt"] = true, ["KevlarPants"] = true, ["MilitaryPants"] = true, 
-    ["Military pants"] = true, ["Sulfur"] = true, ["Iron"] = true, ["Bow"] = true
-}
-local SecondaryPriorityTable = {
-    ["Stone"] = true, ["Wood"] = true, ["IronOre"] = true, ["Grass"] = true,
-    ["SulfurOre"] = true, ["String"] = true, ["Gunpowder"] = true, 
-    ["Ironaxe"] = true, ["IronPickaxe"] = true
-}
-
--- // LOGIC // --
-
 local function getTargetItem()
-    local root = getCharacterRoot() 
+    local root = getCharacterRoot()
     if not root then return nil end
 
-    -- Variables to track the best item for each category
-    local bestHigh, bestMed, bestLow, bestAny = nil, nil, nil, nil
-    local distHigh, distMed, distLow, distAny = Range, Range, Range, Range
-
-    -- Helper function to process a single item
-    local function checkItem(item)
-        if not item:IsA("BasePart") then return end
-
-        -- 1. Filter Trash
-        if IgnoreTrashItems and (item.Name == "Rock" or item.Name == "Torch") then return end
-
-        -- 2. Check Distance
-        local distance = (item.Position - root.Position).Magnitude
-        if distance > Range then return end
-
-        -- 3. Update "Absolute Closest" (Used if Priority Toggle is OFF)
-        if distance < distAny then
-            bestAny = item
-            distAny = distance
-        end
-
-        -- 4. Sort into Priority Buckets (Used if Priority Toggle is ON)
-        if PriorityPickupToggle then
-            if HighPriorityTable[item.Name] then
-                if distance < distHigh then
-                    bestHigh = item
-                    distHigh = distance
-                end
-            elseif SecondaryPriorityTable[item.Name] then
-                if distance < distMed then
-                    bestMed = item
-                    distMed = distance
-                end
-            else
-                -- "All Other" items
-                if distance < distLow then
-                    bestLow = item
-                    distLow = distance
-                end
-            end
-        end
-    end
-
-    -- Scan Loot Folder
+    local closestItem = nil
+    local shortestDistance = Range
+    
+    -- Check Loot Folder
     local lootF = Workspace:FindFirstChild("Loot")
     if lootF then
         for _, item in ipairs(lootF:GetDescendants()) do
-            checkItem(item)
-        end
-    end
-
-    -- Scan Suroviny Folder 
-    -- (Expanded to check everything, in case Ores/Wood spawn here)
-    local surovinyF = Workspace:FindFirstChild("Suroviny")
-    if surovinyF then
-        for _, item in ipairs(surovinyF:GetDescendants()) do
-            checkItem(item)
-        end
-    end
-
-    -- Return the correct item based on settings
-    if PriorityPickupToggle then
-        if bestHigh then return bestHigh end     -- 1. High Priority
-        if bestMed then return bestMed end       -- 2. Secondary Priority
-        return bestLow                           -- 3. Anything else
-    else
-        return bestAny                           -- Priority OFF: Just closest item
-    end
-end
-
-task.spawn(function()
-    while true do
-        if AutoPickUpToggle and PickUpRemote then
-            
-            -- CHECK: Backpack Capacity (Strict Override)
-            local backpackCount = #LocalPlayer.Backpack:GetChildren()
-            local isFull = backpackCount >= MaxToolLimit
-
-            if not isFull then
-                -- CHECK: Key Hold Mode
-                local shouldRun = true
-                if PickUpUseHoldKeyMode then
-                    shouldRun = UserInputService:IsKeyDown(KeyBind)
-                end
-
-                if shouldRun then
-                    local itemToPick = getTargetItem()
-                    if itemToPick then
-                        PickUpRemote:FireServer(itemToPick)
-                    end
+            if item:IsA("BasePart") then
+                local distance = (item.Position - root.Position).Magnitude
+                if distance < shortestDistance then
+                    closestItem = item
+                    shortestDistance = distance
                 end
             end
         end
+    end
+
+    if closestItem then return closestItem end
+
+    -- Check Suroviny Folder
+    local surovinyF = Workspace:FindFirstChild("Suroviny")
+    if surovinyF then
+        for _, item in ipairs(surovinyF:GetDescendants()) do
+            if item.Name == "Grass" and item:IsA("BasePart") then
+                local distance = (item.Position - root.Position).Magnitude
+                if distance < shortestDistance then
+                    closestItem = item
+                    shortestDistance = distance
+                end
+            end
+        end
+    end
+    return closestItem
+end
+
+--- Main Logic Loop
+task.spawn(function()
+    while true do
+        local char = player.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local backpack = player:FindFirstChild("Backpack")
+        local backpackCount = backpack and #backpack:GetChildren() or 0
+        
+        -- Logic Checks
+        local canPickUp = AutoPickUpToggle and PickUpRemote
+        
+        -- 1. Health Check (Bug Safety)
+        if HealthCheckToggle and hum and hum.Health < 0.5 then
+            canPickUp = false
+        end
+        
+        -- 2. Backpack Limit Check
+        if backpackCount >= MaxToolLimit then
+            canPickUp = false
+        end
+        
+        -- 3. Hold Key Check
+        if PickUpUseHoldKeyMode and not isKeyDown then
+            canPickUp = false
+        end
+
+        if canPickUp then
+            local itemToPick = getTargetItem()
+            if itemToPick then
+                PickUpRemote:FireServer(itemToPick)
+            end
+        end
+        
+        task.wait(PickupSpeed)
+    end
+end)
+
+--- Main Logic Loop
+task.spawn(function()
+    while true do
+        local char = player.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local backpack = player:FindFirstChild("Backpack")
+        local backpackCount = backpack and #backpack:GetChildren() or 0
+        
+        -- Logic Checks
+        local canPickUp = AutoPickUpToggle and PickUpRemote
+        
+        -- 1. Health Check (Bug Safety)
+        if HealthCheckToggle and hum and hum.Health < 0.5 then
+            canPickUp = false
+        end
+        
+        -- 2. Backpack Limit Check
+        if backpackCount >= MaxToolLimit then
+            canPickUp = false
+        end
+        
+        -- 3. Hold Key Check
+        if PickUpUseHoldKeyMode and not isKeyDown then
+            canPickUp = false
+        end
+
+        if canPickUp then
+            local itemToPick = getTargetItem()
+            if itemToPick then
+                PickUpRemote:FireServer(itemToPick)
+            end
+        end
+        
         task.wait(PickupSpeed)
     end
 end)
