@@ -37,6 +37,12 @@ local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/v
 local PickUpRemote = nil 
 local AutoPickUpToggle = false
 local Range = 25
+local PickupSpeed = 0.418
+local PickUpUseHoldKeyMode = false        -- Set to true to only pickup while holding the key
+local KeyBind = Enum.KeyCode.E      -- The key to hold
+local IgnoreTrashItems = true       -- If true, will NOT pick up Rocks or Torches
+local MaxToolLimit = 20             -- Stops picking up if Backpack has this many items
+local PriorityPickupToggle = true   -- If true, prioritizes the lists below before closest item
 
 -- Player Chams Vars
 local PLAYERCHAMS = false
@@ -87,11 +93,7 @@ getgenv().Settings = {
     MaxDistance = 250,
     TracerColor = Color3.fromRGB(255, 0, 0),
     ShowTracer = false,
-    
-    -- [[ PREDICTION TOGGLES ]]
-    -- Mode: "Quadratic" (Precise Intercept) OR "Simple" (Velocity Division)
-    BowPredictionType = "Simple", 
-    -- [[ SCALERS ]]
+    BowPredictionType = "Quadratic", 
     SimpleXScaler = 1.0,          -- Lead multiplier for "Simple" mode
     GlobalYScaler = 1.0,          -- Multiplier for all Y-axis logic
     ManualYOffset = 0,            -- Flat addition to height
@@ -105,11 +107,6 @@ getgenv().Settings = {
     -- [[ PROJECTILE SPEEDS ]]
     BowSpeed = 100,
     CrossbowSpeed = 130,
-
-    -- [[ UNUSED PLACEHOLDERS (Future Proofing) ]]
-    AR_ProjectileSpeed = 800,
-    Revolver_ProjectileSpeed = 600,
-    Shotgun_ProjectileSpeed = 450,
 }
 local OreConfig = {
     Ores = { Enabled = false, Distance = 1000, TextSize = 14 },
@@ -156,8 +153,78 @@ local AnimalGroup = Tabs.Main:AddRightGroupbox('Animal ESP')
 
 
 -- 1. FEATURES
-LeftGroupBox:AddToggle("AutoPick", { Text = "Auto Pick Up", Default = false, Tooltip = 'Pick up item immediately Check F9 for remote',  Callback = function(V) AutoPickUpToggle = V end })
+LeftGroupBox:AddToggle("AutoPick", { 
+    Text = "Auto Pick Up", 
+    Default = false, 
+    Tooltip = 'Master switch for the looter', 
+    Callback = function(V) AutoPickUpToggle = V end 
+})
 
+local AutoPickDepp = LeftGroupBox:AddDependencyBox()
+
+
+-- Range Slider
+AutoPickDepp:AddSlider('PickRange', {
+    Text = 'Pickup Range',
+    Default = 25,
+    Min = 1,
+    Max = 35,
+    Rounding = 0,
+    Callback = function(V) Range = V end
+})
+
+-- Speed Slider
+AutoPickDepp:AddSlider('PickSpeed', {
+    Text = 'Pickup Interval (Seconds)',
+    Default = 0.418,
+    Min = 0.4,
+    Max = 1,
+    Rounding = 3,
+    Callback = function(V) PickupSpeed = V end
+})
+
+-- Backpack Limit Slider
+AutoPickDepp:AddSlider('MaxTools', {
+    Text = 'Max Backpack Items',
+    Default = 20,
+    Min = 2,
+    Max = 21,
+    Rounding = 0,
+    Callback = function(V) MaxToolLimit = V end
+})
+
+-- Sub-Toggles
+AutoPickDepp:AddToggle("IgnoreTrash", { 
+    Text = "Ignore Rocks/Torches", 
+    Default = true, 
+    Callback = function(V) IgnoreTrashItems = V end 
+})
+
+AutoPickDepp:AddToggle("PriorityMode", { 
+    Text = "Priority Pickup", 
+    Default = true, 
+    Callback = function(V) PriorityPickupToggle = V end 
+})
+
+
+-- Key Hold Toggle + Key Picker
+AutoPickDepp:AddToggle("HoldKeyMode", { 
+    Text = "Use Hold Key", 
+    Default = false, 
+    Callback = function(V) PickUpUseHoldKeyMode = V end 
+}):AddKeyPicker('HoldKeyBind', {
+    Default = 'E',
+    SyncToggleState = false,
+    Mode = 'Hold',
+    Text = 'Pickup Key',
+    NoUserShortcut = true,
+    Callback = function(V) KeyBind = V end
+})
+
+AutoPickDepp:SetupDependencies({
+    { Toggles.AutoPick, true }
+})
+AutoPickDepp:AddDivider()
 -- 2. VISUALS - LOOT
 RightGroupBox:AddToggle("LootESP", { 
     Text = "Enable Loot ESP", 
@@ -379,7 +446,7 @@ SOLDIERSESPdep:SetupDependencies({
 ---7 FOV
 
 
-LeftGroupBox:AddToggle('FovEnabled', {
+MainAimbotGroup:AddToggle('FovEnabled', {
     Text = 'Enable FOV Circle',
     Default = _G.CircleVisible,
     Tooltip = 'Shows the FOV circle and enables target detection',
@@ -390,7 +457,7 @@ LeftGroupBox:AddToggle('FovEnabled', {
         end
     end
 })
-local FovSettingsBox = LeftGroupBox:AddDependencyBox()
+local FovSettingsBox = MainAimbotGroup:AddDependencyBox()
 
 FovSettingsBox:AddToggle('FovVisible', {
     Text = 'Show FOV Circle',
@@ -560,7 +627,7 @@ PingDep:SetupDependencies({{ Toggles.PingComp, true }})
 
 AdvancedGroup:AddToggle('SmoothToggle', {
     Text = 'Enable Smoothing',
-    Default = true,
+    Default = falsew,
     Callback = function(Value) getgenv().Settings.SmoothingEnabled = Value end
 })
 
@@ -872,54 +939,119 @@ local function getCharacterRoot()
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
+local HighPriorityTable = {
+    ["AssaultRifle"] = true, ["Revolver"] = true, ["Crossbow"] = true, ["Shotgun"] = true,
+    ["CrateKey"] = true, ["Bolt"] = true, ["RevolverAmmo"] = true, ["Rifleammo"] = true,
+    ["Shotgunammo"] = true, ["Dynamite"] = true, ["Gernade"] = true, ["Medkit"] = true,
+    ["KevlarShirt"] = true, ["KevlarPants"] = true, ["MilitaryPants"] = true, 
+    ["Military pants"] = true, ["Sulfur"] = true, ["Iron"] = true, ["Bow"] = true
+}
+local SecondaryPriorityTable = {
+    ["Stone"] = true, ["Wood"] = true, ["IronOre"] = true, ["Grass"] = true,
+    ["SulfurOre"] = true, ["String"] = true, ["Gunpowder"] = true, 
+    ["Ironaxe"] = true, ["IronPickaxe"] = true
+}
+
+-- // LOGIC // --
+
 local function getTargetItem()
-    local root = getCharacterRoot()
+    local root = getCharacterRoot() 
     if not root then return nil end
 
-    local closestItem = nil
-    local shortestDistance = Range
-    
-    -- Check Loot Folder
+    -- Variables to track the best item for each category
+    local bestHigh, bestMed, bestLow, bestAny = nil, nil, nil, nil
+    local distHigh, distMed, distLow, distAny = Range, Range, Range, Range
+
+    -- Helper function to process a single item
+    local function checkItem(item)
+        if not item:IsA("BasePart") then return end
+
+        -- 1. Filter Trash
+        if IgnoreTrashItems and (item.Name == "Rock" or item.Name == "Torch") then return end
+
+        -- 2. Check Distance
+        local distance = (item.Position - root.Position).Magnitude
+        if distance > Range then return end
+
+        -- 3. Update "Absolute Closest" (Used if Priority Toggle is OFF)
+        if distance < distAny then
+            bestAny = item
+            distAny = distance
+        end
+
+        -- 4. Sort into Priority Buckets (Used if Priority Toggle is ON)
+        if PriorityPickupToggle then
+            if HighPriorityTable[item.Name] then
+                if distance < distHigh then
+                    bestHigh = item
+                    distHigh = distance
+                end
+            elseif SecondaryPriorityTable[item.Name] then
+                if distance < distMed then
+                    bestMed = item
+                    distMed = distance
+                end
+            else
+                -- "All Other" items
+                if distance < distLow then
+                    bestLow = item
+                    distLow = distance
+                end
+            end
+        end
+    end
+
+    -- Scan Loot Folder
     local lootF = Workspace:FindFirstChild("Loot")
     if lootF then
         for _, item in ipairs(lootF:GetDescendants()) do
-            if item:IsA("BasePart") then
-                local distance = (item.Position - root.Position).Magnitude
-                if distance < shortestDistance then
-                    closestItem = item
-                    shortestDistance = distance
-                end
-            end
+            checkItem(item)
         end
     end
 
-    if closestItem then return closestItem end
-
-    -- Check Suroviny Folder
+    -- Scan Suroviny Folder 
+    -- (Expanded to check everything, in case Ores/Wood spawn here)
     local surovinyF = Workspace:FindFirstChild("Suroviny")
     if surovinyF then
         for _, item in ipairs(surovinyF:GetDescendants()) do
-            if item.Name == "Grass" and item:IsA("BasePart") then
-                local distance = (item.Position - root.Position).Magnitude
-                if distance < shortestDistance then
-                    closestItem = item
-                    shortestDistance = distance
-                end
-            end
+            checkItem(item)
         end
     end
-    return closestItem
+
+    -- Return the correct item based on settings
+    if PriorityPickupToggle then
+        if bestHigh then return bestHigh end     -- 1. High Priority
+        if bestMed then return bestMed end       -- 2. Secondary Priority
+        return bestLow                           -- 3. Anything else
+    else
+        return bestAny                           -- Priority OFF: Just closest item
+    end
 end
 
 task.spawn(function()
     while true do
         if AutoPickUpToggle and PickUpRemote then
-            local itemToPick = getTargetItem()
-            if itemToPick then
-                PickUpRemote:FireServer(itemToPick)
+            
+            -- CHECK: Backpack Capacity (Strict Override)
+            local backpackCount = #LocalPlayer.Backpack:GetChildren()
+            local isFull = backpackCount >= MaxToolLimit
+
+            if not isFull then
+                -- CHECK: Key Hold Mode
+                local shouldRun = true
+                if PickUpUseHoldKeyMode then
+                    shouldRun = UserInputService:IsKeyDown(KeyBind)
+                end
+
+                if shouldRun then
+                    local itemToPick = getTargetItem()
+                    if itemToPick then
+                        PickUpRemote:FireServer(itemToPick)
+                    end
+                end
             end
         end
-        task.wait(0.418)
+        task.wait(PickupSpeed)
     end
 end)
 -- [[ LOOT ESP LOGIC ]] --
@@ -1157,7 +1289,7 @@ end)
 -- ui
 local InventoryViewer = {
     Visible = true,
-    Position = Vector2.new(_G.InvPosX, _G.InvPosY),
+    Position = Vector2.new(_G.InvPosX or 100, _G.InvPosY or 100), -- Fallback positions
     Elements = {},
     DragData = {Dragging = false, Offset = Vector2.new(0,0)},
     LastScan = ""
@@ -1181,7 +1313,7 @@ local function getUnmaskedName(tool)
     if not handle then return "Unknown (" .. tool.Name .. ")" end
 
     local mesh = handle:FindFirstChildOfClass("SpecialMesh") or (handle:IsA("MeshPart") and handle)
-    if mesh and mesh.MeshId ~= "" and MeshDatabase[mesh.MeshId] then
+    if mesh and mesh.MeshId ~= "" and MeshDatabase and MeshDatabase[mesh.MeshId] then
         return MeshDatabase[mesh.MeshId]
     end
 
@@ -1194,7 +1326,7 @@ local function getUnmaskedName(tool)
     end
 
     local signature = string.format("RGB(%d, %d, %d)", r, g, b)
-    local foundName = SignatureDatabase[signature]
+    local foundName = SignatureDatabase and SignatureDatabase[signature]
     
     if foundName then
         local toolName = tool.Name:lower()
@@ -1227,10 +1359,10 @@ function InventoryViewer:Update(Title, Items)
     end
 
     local currentCheck = Title or ""
-    for k, v in pairs(Items) do currentCheck = currentCheck .. k .. v end
+    -- Update hash check to include counts
+    for k, v in pairs(Items) do currentCheck = currentCheck .. k .. v.Count .. v.Status end
     
-    -- Check for scale changes too
-    local scaleStr = tostring(_G.UIScale)
+    local scaleStr = tostring(_G.UIScale or 1)
     if self.LastScan == currentCheck .. scaleStr then
         self.Main.Position = self.Position
         self.Border.Position = self.Position
@@ -1247,7 +1379,6 @@ function InventoryViewer:Update(Title, Items)
 
     self.LastScan = currentCheck .. scaleStr
 
-    -- [[ DYNAMIC SCALED DIMENSIONS ]] --
     local Scale = _G.UIScale or 1
     local BoxWidth       = 220 * Scale
     local LineHeight      = 22 * Scale
@@ -1281,11 +1412,15 @@ function InventoryViewer:Update(Title, Items)
     table.insert(self.Elements, TitleText)
 
     local YOffset = HeaderPadding
-    for Name, Status in pairs(Items) do
+    for Name, Data in pairs(Items) do
+        local Status = Data.Status
         local ItemColor = (Status == "[EQUIPPED]") and Color3.fromRGB(255, 200, 0) or Color3.fromRGB(255, 255, 255)
         
+        -- FORMATTING: Add "x2", "x3" if more than one
+        local DisplayName = (Data.Count > 1) and (Name .. " x" .. Data.Count) or Name
+
         local ItemText = Drawing.new("Text")
-        ItemText.Text = Name
+        ItemText.Text = DisplayName
         ItemText.Size = ItemFontSize
         ItemText.Outline = true
         ItemText.Color = ItemColor
@@ -1334,17 +1469,23 @@ RunService.RenderStepped:Connect(function()
     end
     
     if Detected and _G.ScannerEnabled then
-        local InventoryData = {}
+        local InventoryData = {} -- Format: { ["Rock"] = {Count = 1, Status = ""} }
+        
+        -- Check Equipped
         local Tool = Detected.Character:FindFirstChildOfClass("Tool")
         if Tool then
-            InventoryData[getUnmaskedName(Tool)] = "[EQUIPPED]"
+            local name = getUnmaskedName(Tool)
+            InventoryData[name] = {Count = 1, Status = "[EQUIPPED]"}
         end
         
+        -- Check Backpack
         for _, item in pairs(Detected.Backpack:GetChildren()) do
             if item:IsA("Tool") then
                 local name = getUnmaskedName(item)
-                if not InventoryData[name] then
-                    InventoryData[name] = ""
+                if InventoryData[name] then
+                    InventoryData[name].Count = InventoryData[name].Count + 1
+                else
+                    InventoryData[name] = {Count = 1, Status = ""}
                 end
             end
         end
@@ -1354,7 +1495,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- [[ DRAG LOGIC ]] --
+-- [[ DRAG LOGIC REMAINING THE SAME ]] --
 UserInputService.InputBegan:Connect(function(Input)
     if Input.UserInputType == Enum.UserInputType.MouseButton1 then
         local Mouse = UserInputService:GetMouseLocation()
@@ -1371,8 +1512,6 @@ UserInputService.InputEnded:Connect(function(Input)
         InventoryViewer.DragData.Dragging = false
     end
 end)
-
-
 
 -- Holy grail aimbot lmao
 
@@ -1729,4 +1868,3 @@ RunService.RenderStepped:Connect(function()
         DrawingPool[i].Visible = false
     end
 end)
-
