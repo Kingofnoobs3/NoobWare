@@ -38,6 +38,7 @@ local PickUpRemote = nil
 local AutoPickUpToggle = false
 local Range = 25
 local PickupSpeed = 0.42
+HealthCheckToggle = true
 local PickUpUseHoldKeyMode = false        -- Set to true to only pickup while holding the key
 local KeyBind = Enum.KeyCode.E      -- The key to hold
 local MaxToolLimit = 20             -- Stops picking up if Backpack has this many items
@@ -1865,3 +1866,4 @@ RunService.RenderStepped:Connect(function()
         DrawingPool[i].Visible = false
     end
 end)
+ 
